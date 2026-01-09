@@ -13,7 +13,7 @@ import traceback
 from rich.console import Console
 from rich.table import Table
 from rich.live import Live
-from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, SpinnerColumn
 from rich.panel import Panel
 from rich import box
 from rich.layout import Layout
@@ -119,8 +119,8 @@ class SettingsManager:
         with open(self.filename, 'w') as f:
             json.dump(self.settings, f, indent=2)
 
-    def get(self, key):
-        return self.settings.get(key)
+    def get(self, key, default=None):
+        return self.settings.get(key, default)
 
     def set(self, key, value):
         self.settings[key] = value
@@ -326,13 +326,15 @@ class FocusApp:
         def get_footer():
             return f"{base_footer} | Volume: {int(self.audio.master_volume * 100)}%"
 
+
         # Progress bar configuration
         # Check settings for timer visibility
         show_timer = self.settings.get("show_timer")
         
         columns = [
+            SpinnerColumn(style="bold yellow"),
             TextColumn("[bold blue]{task.description}"),
-            BarColumn(bar_width=None),
+            BarColumn(bar_width=None, complete_style="bold magenta", finished_style="bold green"),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         ]
         
