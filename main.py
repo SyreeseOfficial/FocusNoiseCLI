@@ -74,6 +74,26 @@ class StatsManager:
         self.stats["total_seconds"] += seconds
         self.save_stats()
 
+    def get_rank_title(self):
+        total_hours = self.stats["total_seconds"] / 3600.0
+        
+        if total_hours < 1:
+            return "Script Kiddie"
+        elif total_hours < 5:
+            return "Novice"
+        elif total_hours < 10:
+            return "Terminal Tourist"
+        elif total_hours < 25:
+            return "Flow Apprentice"
+        elif total_hours < 50:
+            return "Deep Work Specialist"
+        elif total_hours < 75:
+            return "Cyber Monk"
+        elif total_hours < 100:
+            return "Neural Architect"
+        else:
+            return "Time Lord"
+
     def get_display_stats(self):
         total_sec = int(self.stats["total_seconds"])
         hours = total_sec // 3600
@@ -83,7 +103,9 @@ class StatsManager:
         streak = self.stats["current_streak"]
         streak_str = f"{streak} Day{'s' if streak != 1 else ''}"
         
-        return time_str, streak_str
+        rank = self.get_rank_title()
+        
+        return time_str, streak_str, rank
 
     def reset_stats(self):
         self.stats = {
@@ -133,6 +155,31 @@ class SettingsManager:
         self.save_settings()
 
 class FocusApp:
+    SYSTEM_MESSAGES = [
+        "[SYSTEM] Dopamine levels optimizing...",
+        "[KERNEL] Blocking external distractions...",
+        "[AUDIO] Vibe frequency steady at 40Hz...",
+        "[NET] Syncing with flow state...",
+        "[CPU] Rerouting neural pathways...",
+        "[MEM] Flushing procrastination buffer...",
+        "[DISK] Mounting /dev/focus...",
+        "[SYSTEM] Garbarge collecting anxiety...",
+        "[SEC] Firewalling negative thoughts...",
+        "[PROCESS] Compiling success metrics...",
+        "[ROOT] Access granted to The Zone...",
+        "[SYSTEM] Allocating RAM for creativity...",
+        "[KERNEL] Pinging 127.0.0.1... Alive.",
+        "[VIDEO] Rendering future goals...",
+        "[SYSTEM] Coffee dependency check: OK."
+    ]
+
+    GHOST_MESSAGES = [
+        "[SYSTEM] It's cold in here...",
+        "[SYSTEM] I wish I could focus like you.",
+        "[SYSTEM] Don't look behind you.",
+        "[SYSTEM] Are you real?"
+    ]
+
     def __init__(self):
         self.console = Console()
         self.audio = AudioManager()
@@ -150,8 +197,8 @@ class FocusApp:
         self.console.print()
         
         # Stats Panel
-        time_str, streak_str = self.stats.get_display_stats()
-        stats_text = f"[bold green]Total Focus:[/bold green] {time_str}  |  [bold yellow]Current Streak:[/bold yellow] {streak_str} 🔥"
+        time_str, streak_str, rank = self.stats.get_display_stats()
+        stats_text = f"[bold green]Total Focus:[/bold green] {time_str}  |  [bold yellow]Current Streak:[/bold yellow] {streak_str} 🔥\n[bold {tc}]Rank:[/bold {tc}] {rank}"
         self.console.print(Panel(Align.center(stats_text), box=box.ROUNDED, style="blue"), justify="center")
         self.console.print()
 
@@ -375,7 +422,7 @@ class FocusApp:
         txn_id = f"TXN-{random.randint(10000, 99999)}"
         
         # Stats for receipt
-        total_time_str, streak_str = self.stats.get_display_stats()
+        total_time_str, streak_str, rank = self.stats.get_display_stats()
         
         tc = self.theme_color
         
@@ -424,6 +471,7 @@ class FocusApp:
         lines.append(f"[bold]LIFETIME PROGRESS[/bold]")
         lines.append(lr(" Cumulative Focus", total_time_str))
         lines.append(lr(" Current Streak", streak_str))
+        lines.append(lr(" Operator Rank", rank))
         
         lines.append("-" * width)
         lines.append(f"[bold]TOTAL                        ZEN STATE[/bold]")
@@ -501,16 +549,52 @@ class FocusApp:
             Layout(name="lower", size=3)
         )
         
-        # Configure center layout based on tasks
+        # Configure center layout based on tasks & Logs
+        # Standard: Center -> [Timer, Tasks?, Log]
+        
+        center_elements = []
+        center_elements.append(Layout(name="timer"))
+        
         if tasks:
-            layout["center"].split_column(
-                Layout(name="timer"),
-                Layout(name="tasks", size=len(tasks) + 4)
-            )
-            timer_layout = layout["center"]["timer"]
+            center_elements.append(Layout(name="tasks", size=len(tasks) + 4))
+            
+        # Add System Log panel
+        center_elements.append(Layout(name="log", size=6)) # Fixed size for log
+        
+        layout["center"].split_column(*center_elements)
+        
+        timer_layout = layout["center"]["timer"]
+        log_layout = layout["center"]["log"]
+        if tasks:
             tasks_layout = layout["center"]["tasks"]
         else:
-            timer_layout = layout["center"]
+            tasks_layout = None
+            
+        # System Log State
+        log_messages = []
+        last_log_time = time.time()
+        import random
+        log_interval = random.uniform(2.0, 5.0)
+        
+        def update_system_log():
+            nonlocal log_messages, last_log_time, log_interval
+            if time.time() - last_log_time > log_interval:
+                last_log_time = time.time()
+                log_interval = random.uniform(2.0, 5.0)
+                
+                # Choose message type (1% ghost chance)
+                if random.random() < 0.01:
+                    msg = random.choice(self.GHOST_MESSAGES)
+                    # Style ghosts differently
+                    msg = f"[bold red blink]{msg}[/bold red blink]"
+                else:
+                    msg = random.choice(self.SYSTEM_MESSAGES)
+                    msg = f"[green]{msg}[/green]"
+                
+                log_messages.append(msg)
+                if len(log_messages) > 4:
+                    log_messages.pop(0)
+                    
         
         # Initial View
         old_settings = termios.tcgetattr(sys.stdin)
@@ -528,6 +612,9 @@ class FocusApp:
                     # Periodic Dynamic Weather Update
                     if self.settings.get("dynamic_weather", True):
                         self.audio.update_textures()
+                        
+                    # Periodic System Log Update
+                    update_system_log()
                     
                     # Input Handling
                     key = self.check_input()
@@ -542,7 +629,6 @@ class FocusApp:
                     progress.update(task_id, completed=elapsed)
                     
                     # Update Layout details
-                    # Update Layout details
                     layout["upper"].update(Align.center(Text("Focus Noise Player", style=f"bold {self.theme_color}")))
                     
                     # We render progress into a panel for the center
@@ -550,7 +636,7 @@ class FocusApp:
                         Panel(progress, title="Time Remaining", border_style="green")
                     )
                     
-                    if tasks:
+                    if tasks and tasks_layout:
                         task_table = Table.grid(padding=(0, 1))
                         task_table.add_column(style="bold yellow", justify="right")
                         task_table.add_column(style="white")
@@ -560,6 +646,12 @@ class FocusApp:
                         tasks_layout.update(
                             Panel(Align.center(task_table), title="Current Tasks", border_style="magenta")
                         )
+                        
+                    # Update System Log Panel
+                    log_text = "\n".join(log_messages)
+                    log_layout.update(
+                        Panel(Text.from_markup(log_text), title="System Log", border_style="blue", padding=(0,1))
+                    )
                     
                     layout["lower"].update(
                         Panel(Align.center(Text(get_footer(), style="dim")))
