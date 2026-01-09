@@ -27,12 +27,29 @@ class AudioManager:
         except Exception as e:
             print(f"Warning: Audio init failed ({e}). Sound will be disabled.")
         
-        self.assets_dir = Path(assets_dir)
+        # Resolve Assets Directory
+        if assets_dir == "assets":
+            # Search order: Local -> Script Relative -> System
+            candidates = [
+                Path("assets"),
+                Path(__file__).parent / "assets",
+                Path("/usr/share/focusnoise-cli/assets"),
+                Path("/usr/local/share/focusnoise-cli/assets")
+            ]
+            self.assets_dir = Path("assets") # Fallback
+            for candidate in candidates:
+                if candidate.exists() and candidate.is_dir():
+                    self.assets_dir = candidate
+                    break
+        else:
+            self.assets_dir = Path(assets_dir)
+
         self.sfx_dir = self.assets_dir / "sfx"
         self.textures_dir = self.assets_dir / "textures"
         
-        # 1. Automatic File Setup
-        self.organize_textures()
+        # 1. Automatic File Setup (Only if we have write access)
+        if os.access(self.assets_dir, os.W_OK):
+            self.organize_textures()
         
         # Storage
         self.sounds: Dict[str, pygame.mixer.Sound] = {}   # filename -> mixer.Sound
