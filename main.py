@@ -1,6 +1,9 @@
 import os
 import time
 import sys
+import termios
+import tty
+import select
 # Suppress pygame welcome message
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
@@ -21,6 +24,7 @@ class AudioManager:
         self.sounds = {} # filename -> mixer.Sound
         self.channels = {} # filename -> mixer.Channel
         self.playing = [] # List of filenames currently playing
+        self.master_volume = 1.0
         self.emojis = {
             'rain': '🌧️',
             'fire': '🔥',
@@ -60,6 +64,7 @@ class AudioManager:
         if filename in self.sounds:
             # Play in loop
             channel = self.sounds[filename].play(loops=-1)
+            channel.set_volume(self.master_volume)
             self.channels[filename] = channel
             self.playing.append(filename)
 
@@ -67,6 +72,12 @@ class AudioManager:
         # level 0.0 to 1.0
         if filename in self.sounds:
             self.sounds[filename].set_volume(level)
+
+    def set_master_volume(self, level):
+        self.master_volume = max(0.0, min(1.0, level))
+        for filename, channel in self.channels.items():
+            if channel.get_busy():
+                channel.set_volume(self.master_volume)
 
     def stop_all(self):
         for filename in self.playing:
@@ -129,18 +140,35 @@ class FocusApp:
             self.console.print("[red]Invalid duration. Defaulting to 25 minutes.[/red]")
             seconds = 25 * 60
             
+        # Initial Volume
+        self.console.print("[bold yellow]Initial Volume (0-100%):[/bold yellow] ", end="")
+        try:
+            vol_input = input()
+            if vol_input.strip():
+                vol_percent = float(vol_input)
+                self.audio.set_master_volume(vol_percent / 100.0)
+        except ValueError:
+            self.console.print("[red]Invalid volume. Defaulting to 100%.[/red]")
+            
         return selected_files, seconds
+
+    def check_input(self):
+        if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+            return sys.stdin.read(1)
+        return None
 
     def run(self):
         files, duration = self.phase_one_selection()
         if not files:
             return
 
+
         # Start Audio
         for f in files:
             self.audio.play_sound(f)
 
         self.console.clear()
+        self.console.print("[dim]controls: +/- to adjust volume, ctrl+c to quit[/dim]")
         
         # Prepare valid emojis for footer
         playing_emojis = []
@@ -150,7 +178,11 @@ class FocusApp:
             emoji = self.audio.get_emoji(f)
             playing_emojis.append(f"{emoji} {name}")
         
-        footer_text = "Playing: " + " + ".join(playing_emojis)
+            playing_emojis.append(f"{emoji} {name}")
+        
+        base_footer = "Playing: " + " + ".join(playing_emojis)
+        def get_footer():
+            return f"{base_footer} | Volume: {int(self.audio.master_volume * 100)}%"
 
         # Progress bar configuration
         progress = Progress(
@@ -172,7 +204,10 @@ class FocusApp:
         )
         
         # Initial View
+        # Initial View
+        old_settings = termios.tcgetattr(sys.stdin)
         try:
+            tty.setcbreak(sys.stdin.fileno())
             with Live(layout, refresh_per_second=4, screen=True) as live:
                 start_time = time.time()
                 while True:
@@ -182,6 +217,14 @@ class FocusApp:
                     if remaining <= 0:
                         break
                     
+                    # Input Handling
+                    key = self.check_input()
+                    if key:
+                        if key in ('+', 'w', '='): # = is unshifted +
+                            self.audio.set_master_volume(self.audio.master_volume + 0.05)
+                        elif key in ('-', 's'):
+                            self.audio.set_master_volume(self.audio.master_volume - 0.05)
+
                     # Update Progress
                     progress.update(task_id, completed=elapsed)
                     
@@ -194,10 +237,10 @@ class FocusApp:
                     )
                     
                     layout["lower"].update(
-                        Panel(Align.center(Text(footer_text, style="dim")))
+                        Panel(Align.center(Text(get_footer(), style="dim")))
                     )
                     
-                    time.sleep(0.5)
+                    time.sleep(0.1) # Faster poll for input responsiveness
             
             self.audio.stop_all()
             self.console.print("[bold green]Session Complete![/bold green] 🎉")
@@ -205,6 +248,8 @@ class FocusApp:
         except KeyboardInterrupt:
             self.audio.stop_all()
             self.console.print("\n[bold red]Session Stopped.[/bold red] 👋")
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
 if __name__ == "__main__":
     app = FocusApp()
