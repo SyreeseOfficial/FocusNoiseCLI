@@ -109,7 +109,7 @@ class StatsManager:
         total_hours = self.stats["total_seconds"] / 3600.0
         
         if total_hours < 1:
-            return "Script Kiddie"
+            return "Noob"
         elif total_hours < 5:
             return "Novice"
         elif total_hours < 10:
@@ -305,7 +305,32 @@ class FocusApp:
             table.add_row("14. Ghost Freq", f"{self.settings.get('ghost_chance').title()}", "How often ghosts appear")
             table.add_row("15. Reset Stats", "[red]Action[/red]", "Clear all progress data")
             
-            self.console.print(table, justify="center")
+            # Ranks Table
+            rank_table = Table(box=box.ROUNDED, show_header=True, header_style=f"bold {tc}", title="🏆 Rank Progression")
+            rank_table.add_column("Rank", style="cyan")
+            rank_table.add_column("Hours Required", style="green", justify="right")
+            
+            ranks_data = [
+                ("Noob", "0"),
+                ("Novice", "1"),
+                ("Terminal Tourist", "5"),
+                ("Flow Apprentice", "10"),
+                ("Deep Work Specialist", "25"),
+                ("Cyber Monk", "50"),
+                ("Neural Architect", "75"),
+                ("Time Lord", "100")
+            ]
+            
+            for r, h in ranks_data:
+                rank_table.add_row(r, h)
+
+            # Combined Layout
+            grid = Table.grid(padding=2)
+            grid.add_column()
+            grid.add_column()
+            grid.add_row(table, rank_table)
+            
+            self.console.print(grid, justify="center")
             self.console.print()
             self.console.print("[dim]Enter number to change, or 'b' to back[/dim]", justify="center")
             
