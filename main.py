@@ -24,7 +24,13 @@ class AudioManager:
             'rain': '🌧️',
             'fire': '🔥',
             'cafe': '☕',
-            'brown': '🤎'
+            'coffee': '☕',
+            'brown': '🤎',
+            'city': '🏙️',
+            'water': '💧',
+            'sea': '🌊',
+            'lofi': '🎧',
+            'omm': '🧘'
         }
         self.scan_assets()
 
@@ -32,8 +38,9 @@ class AudioManager:
         if not os.path.exists(self.assets_dir):
             return
         
+        valid_extensions = (".wav", ".mp3", ".ogg")
         for f in os.listdir(self.assets_dir):
-            if f.endswith(".wav"):
+            if f.lower().endswith(valid_extensions):
                 path = os.path.join(self.assets_dir, f)
                 try:
                     self.sounds[f] = pygame.mixer.Sound(path)
@@ -88,7 +95,9 @@ class FocusApp:
         for i, f in enumerate(sound_files):
             idx = str(i+1)
             emoji = self.audio.get_emoji(f)
-            headers = f.replace(".wav", "").replace("_", " ").title()
+            # Generic clean name: remove extension, replace separators
+            base = os.path.splitext(f)[0]
+            headers = base.replace("_", " ").replace("-", " ").title()
             table.add_row(idx, emoji, headers)
 
         self.console.print(table, justify="center")
@@ -137,7 +146,8 @@ class FocusApp:
         # Prepare valid emojis for footer
         playing_emojis = []
         for f in files:
-            name = f.replace(".wav", "").replace("_", " ").title()
+            base = os.path.splitext(f)[0]
+            name = base.replace("_", " ").replace("-", " ").title()
             emoji = self.audio.get_emoji(f)
             playing_emojis.append(f"{emoji} {name}")
         
