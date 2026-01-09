@@ -60,10 +60,10 @@ class AudioManager:
                 return emoji
         return '🎵'
 
-    def play_sound(self, filename):
+    def play_sound(self, filename, fade_ms=2000):
         if filename in self.sounds:
             # Play in loop
-            channel = self.sounds[filename].play(loops=-1)
+            channel = self.sounds[filename].play(loops=-1, fade_ms=fade_ms)
             channel.set_volume(self.master_volume)
             self.channels[filename] = channel
             self.playing.append(filename)
@@ -79,9 +79,9 @@ class AudioManager:
             if channel.get_busy():
                 channel.set_volume(self.master_volume)
 
-    def stop_all(self):
+    def stop_all(self, fade_ms=2000):
         for filename in self.playing:
-            self.sounds[filename].stop()
+            self.sounds[filename].fadeout(fade_ms)
         self.playing.clear()
         self.channels.clear()
 
@@ -165,7 +165,7 @@ class FocusApp:
 
         # Start Audio
         for f in files:
-            self.audio.play_sound(f)
+            self.audio.play_sound(f, fade_ms=2000)
 
         self.console.clear()
         self.console.print("[dim]controls: +/- to adjust volume, ctrl+c to quit[/dim]")
@@ -242,11 +242,15 @@ class FocusApp:
                     
                     time.sleep(0.1) # Faster poll for input responsiveness
             
-            self.audio.stop_all()
+            self.console.print("[dim]Fading out...[/dim]")
+            self.audio.stop_all(fade_ms=2000)
+            time.sleep(2.0)
             self.console.print("[bold green]Session Complete![/bold green] 🎉")
             
         except KeyboardInterrupt:
-            self.audio.stop_all()
+            self.console.print("\n[dim]Fading out...[/dim]")
+            self.audio.stop_all(fade_ms=2000)
+            time.sleep(2.0)
             self.console.print("\n[bold red]Session Stopped.[/bold red] 👋")
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
