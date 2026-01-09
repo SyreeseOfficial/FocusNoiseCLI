@@ -1,4 +1,4 @@
 pygame
-asciimatics
+rich
 numpy
 scipy
