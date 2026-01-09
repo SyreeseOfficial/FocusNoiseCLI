@@ -362,6 +362,84 @@ class FocusApp:
             
         return selected_files, seconds, tasks
 
+    def print_receipt(self, elapsed_seconds, tasks, files):
+        self.console.print()
+        
+        # Data prep
+        mins = int(elapsed_seconds // 60)
+        secs = int(elapsed_seconds % 60)
+        time_str = f"{mins:02}:{secs:02}"
+        
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        import random
+        txn_id = f"TXN-{random.randint(10000, 99999)}"
+        
+        # Stats for receipt
+        total_time_str, streak_str = self.stats.get_display_stats()
+        
+        tc = self.theme_color
+        
+        # Receipt Construction
+        width = 44
+        def c(text): return text.center(width)
+        def lr(left, right): 
+            padding = width - len(left) - len(right)
+            return left + " " * padding + right
+
+        lines = []
+        lines.append(f"[bold {tc}]" + "=" * width + f"[/bold {tc}]")
+        lines.append(f"[bold {tc}]" + c("THE FOCUS CAFE") + f"[/bold {tc}]")
+        lines.append(c("OFFICIAL FOCUS RECEIPT"))
+        lines.append(f"[dim]" + c(f"Host: 127.0.0.1 | {txn_id}") + "[/dim]")
+        lines.append(f"[dim]" + c(f"Date: {date_str}") + "[/dim]")
+        lines.append(f"[bold {tc}]" + "=" * width + f"[/bold {tc}]")
+        
+        lines.append(f"[bold]SESSION LOG[/bold]")
+        lines.append(lr("ITEM", "QTY      TIME"))
+        lines.append("-" * width)
+        
+        # Focus Item
+        lines.append(lr("Deep Focus Session", f"1.0    {time_str}"))
+        
+        # Sounds
+        if files:
+            lines.append("")
+            lines.append(f"[bold]AUDIO ASSETS[/bold]")
+            for f in files:
+                name = os.path.splitext(os.path.basename(f))[0].replace("_", " ").title()
+                short_name = (name[:20] + '..') if len(name) > 20 else name
+                lines.append(lr(f" {short_name}", "LOOP     DONE"))
+            
+        # Tasks Section
+        if tasks:
+            lines.append("")
+            lines.append(f"[bold]OPERATIONAL OVERVIEW[/bold]")
+            lines.append(lr(" Tasks Crushed", f"{len(tasks)}     DONE"))
+            for i, t in enumerate(tasks):
+                short_t = (t[:30] + '...') if len(t) > 30 else t
+                lines.append(f"  * {short_t}")
+
+        # Lifetime Stats
+        lines.append("")
+        lines.append(f"[bold]LIFETIME PROGRESS[/bold]")
+        lines.append(lr(" Cumulative Focus", total_time_str))
+        lines.append(lr(" Current Streak", streak_str))
+        
+        lines.append("-" * width)
+        lines.append(f"[bold]TOTAL                        ZEN STATE[/bold]")
+        lines.append(f"[bold {tc}]" + "=" * width + f"[/bold {tc}]")
+        lines.append(c("THANK YOU FOR YOUR PATRONAGE"))
+        lines.append(c("IDLE HANDS ARE THE DEVIL'S WORKSHOP"))
+        lines.append(c("STAY TUNED, STAY FOCUSED"))
+        lines.append(f"[bold {tc}]" + "=" * width + f"[/bold {tc}]")
+        
+        receipt_text = "\n".join(lines)
+        
+        # Use simple panel-like look or just aligned text
+        self.console.print(Align.center(receipt_text))
+        self.console.print()
+
+
     def check_input(self):
         if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
             return sys.stdin.read(1)
@@ -503,7 +581,7 @@ class FocusApp:
                 self.audio.play_gong()
                 time.sleep(4.0) # Wait for gong to ring out
             
-            self.console.print("[bold green]Session Complete![/bold green] 🎉")
+            self.print_receipt(elapsed_total, tasks, files)
             self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
             
         except Exception:
@@ -535,7 +613,10 @@ class FocusApp:
             time.sleep(self.settings.get("fade_duration", 2.0))
             self.console.print("\n[bold red]Session Stopped.[/bold red] 👋")
             try:
-                self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
+                # Calculate elapsed if not yet done
+                if 'elapsed_total' not in locals():
+                    elapsed_total = time.time() - start_time
+                self.print_receipt(elapsed_total, tasks, files)
             except NameError:
                 pass
         finally:
