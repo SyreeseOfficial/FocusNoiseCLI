@@ -1,19 +1,19 @@
 import os
 import time
-import json
-import datetime
 import sys
+import argparse
+import random
+import traceback
 import termios
 import tty
 import select
-from pathlib import Path
-import platform
-import argparse
+import datetime
+from typing import List, Tuple, Optional, Any
 
 # Suppress pygame welcome message
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
-import pygame
-import traceback
+import pygame # still needed for init check or basic needs if any, though audio_manager handles it.
+
 from rich.console import Console
 from rich.table import Table
 from rich.live import Live
@@ -23,182 +23,9 @@ from rich import box
 from rich.layout import Layout
 from rich.align import Align
 from rich.text import Text
+
 from audio_manager import AudioManager
-
-def get_config_dir():
-    """Returns the OS-specific configuration directory."""
-    system = platform.system()
-    home = Path.home()
-    
-    if system == "Windows":
-        path = home / "AppData" / "Local" / "focus-cli"
-    elif system == "Darwin": # MacOS
-        path = home / "Library" / "Application Support" / "focus-cli"
-    else: # Linux/Unix
-        path = home / ".config" / "focus-cli"
-        
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-class StatsManager:
-    def __init__(self):
-        self.config_dir = get_config_dir()
-        self.filename = self.config_dir / "stats.json"
-        
-        # Migration from old local file
-        local_file = Path("stats.json")
-        if local_file.exists() and not self.filename.exists():
-            try:
-                import shutil
-                shutil.move(str(local_file), str(self.filename))
-                print(f"Migrated stats to {self.filename}")
-            except Exception as e:
-                print(f"Failed to migrate stats: {e}")
-
-        self.stats = self.load_stats()
-
-    def load_stats(self):
-        default = {
-            "total_seconds": 0.0,
-            "last_session_date": None,
-            "current_streak": 0
-        }
-        if not self.filename.exists():
-            return default
-        
-        try:
-            with open(self.filename, 'r') as f:
-                data = json.load(f)
-                return {**default, **data} # Merge with default to ensure keys exist
-        except:
-            return default
-
-    def save_stats(self):
-        with open(self.filename, 'w') as f:
-            json.dump(self.stats, f, indent=2)
-
-    def update_time(self, seconds):
-        if seconds <= 0:
-            return
-            
-        today = str(datetime.date.today())
-        last_date = self.stats["last_session_date"]
-        
-        # Streak Logic
-        if last_date != today:
-            if last_date:
-                # Check if consecutive day
-                last_dt = datetime.datetime.strptime(last_date, "%Y-%m-%d").date()
-                curr_dt = datetime.date.today()
-                delta = (curr_dt - last_dt).days
-                
-                if delta == 1:
-                    self.stats["current_streak"] += 1
-                elif delta > 1:
-                    self.stats["current_streak"] = 1
-                # If delta < 1 (same day), do nothing
-            else:
-                self.stats["current_streak"] = 1
-                
-            self.stats["last_session_date"] = today
-        
-        self.stats["total_seconds"] += seconds
-        self.save_stats()
-
-    def get_rank_title(self):
-        total_hours = self.stats["total_seconds"] / 3600.0
-        
-        if total_hours < 1:
-            return "Noob"
-        elif total_hours < 5:
-            return "Novice"
-        elif total_hours < 10:
-            return "Terminal Tourist"
-        elif total_hours < 25:
-            return "Flow Apprentice"
-        elif total_hours < 50:
-            return "Deep Work Specialist"
-        elif total_hours < 75:
-            return "Cyber Monk"
-        elif total_hours < 100:
-            return "Neural Architect"
-        else:
-            return "Time Lord"
-
-    def get_display_stats(self):
-        total_sec = int(self.stats["total_seconds"])
-        hours = total_sec // 3600
-        mins = (total_sec % 3600) // 60
-        time_str = f"{hours}h {mins}m"
-        
-        streak = self.stats["current_streak"]
-        streak_str = f"{streak} Day{'s' if streak != 1 else ''}"
-        
-        rank = self.get_rank_title()
-        
-        return time_str, streak_str, rank
-
-    def reset_stats(self):
-        self.stats = {
-            "total_seconds": 0.0,
-            "last_session_date": None,
-            "current_streak": 0
-        }
-        self.save_stats()
-
-class SettingsManager:
-    def __init__(self):
-        self.config_dir = get_config_dir()
-        self.filename = self.config_dir / "settings.json"
-
-        # Migration
-        local_file = Path("settings.json")
-        if local_file.exists() and not self.filename.exists():
-            try:
-                import shutil
-                shutil.move(str(local_file), str(self.filename))
-                print(f"Migrated settings to {self.filename}")
-            except Exception as e:
-                print(f"Failed to migrate settings: {e}")
-
-        self.settings = self.load_settings()
-
-    def load_settings(self):
-        default = {
-            "volume": 100,
-            "timer_duration": 25,
-            "show_timer": True,
-            "play_gong": True,
-            "dynamic_weather": True,
-            "theme_color": "cyan",
-            "volume_step": 5,
-            "auto_start": False,
-            "weather_freq": "medium",
-            "fade_duration": 2.0,
-            "confirm_exit": False,
-            "show_system_log": True,
-            "enable_ghosts": True,
-            "ghost_chance": "rare"
-        }
-        if not self.filename.exists():
-            return default
-        try:
-            with open(self.filename, 'r') as f:
-                data = json.load(f)
-                return {**default, **data}
-        except:
-            return default
-
-    def save_settings(self):
-        with open(self.filename, 'w') as f:
-            json.dump(self.settings, f, indent=2)
-
-    def get(self, key, default=None):
-        return self.settings.get(key, default)
-
-    def set(self, key, value):
-        self.settings[key] = value
-        self.save_settings()
+from config_manager import StatsManager, SettingsManager, RANK_DATA
 
 class FocusApp:
     SYSTEM_MESSAGES = [
@@ -226,18 +53,19 @@ class FocusApp:
         "[SYSTEM] Are you real?"
     ]
 
-    def __init__(self, cli_args=None):
+    def __init__(self, cli_args: Optional[argparse.Namespace] = None) -> None:
         self.cli_args = cli_args
         self.console = Console()
         self.audio = AudioManager()
         self.stats = StatsManager()
         self.settings = SettingsManager()
+        self.sound_map: dict[str, str] = {}
         
     @property
-    def theme_color(self):
+    def theme_color(self) -> str:
         return self.settings.get("theme_color", "cyan")
 
-    def show_menu(self):
+    def show_menu(self) -> None:
         self.console.clear()
         tc = self.theme_color
         self.console.print(f"[bold {tc}]FocusNoiseCLI[/bold {tc}] 🎧", justify="center")
@@ -268,7 +96,7 @@ class FocusApp:
         self.console.print(Panel(f"[bold {tc}]Rank:[/bold {tc}] {rank}", box=box.SIMPLE), justify="center")
         self.console.print()
 
-    def settings_menu(self):
+    def settings_menu(self) -> None:
         vol_steps = [1, 5, 10]
         weather_freqs = ["low", "medium", "high"]
         fade_durations = [1.0, 2.0, 3.0, 5.0]
@@ -287,7 +115,7 @@ class FocusApp:
             table.add_column("Description", style="dim italic")
             
             # Helper to format boolean
-            def fmt_bool(val): return "ON" if val else "OFF"
+            def fmt_bool(val: bool) -> str: return "ON" if val else "OFF"
             
             table.add_row("1. Default Volume", f"{self.settings.get('volume')}%", "Startup volume level")
             table.add_row("2. Default Duration", f"{self.settings.get('timer_duration')} min", "Startup session length")
@@ -305,24 +133,13 @@ class FocusApp:
             table.add_row("14. Ghost Freq", f"{self.settings.get('ghost_chance').title()}", "How often ghosts appear")
             table.add_row("15. Reset Stats", "[red]Action[/red]", "Clear all progress data")
             
-            # Ranks Table
+            # Ranks Table via shared constant
             rank_table = Table(box=box.ROUNDED, show_header=True, header_style=f"bold {tc}", title="🏆 Rank Progression")
             rank_table.add_column("Rank", style="cyan")
             rank_table.add_column("Hours Required", style="green", justify="right")
             
-            ranks_data = [
-                ("Noob", "0"),
-                ("Novice", "1"),
-                ("Terminal Tourist", "5"),
-                ("Flow Apprentice", "10"),
-                ("Deep Work Specialist", "25"),
-                ("Cyber Monk", "50"),
-                ("Neural Architect", "75"),
-                ("Time Lord", "100")
-            ]
-            
-            for r, h in ranks_data:
-                rank_table.add_row(r, h)
+            for r, h in RANK_DATA:
+                rank_table.add_row(r, str(h))
 
             # Combined Layout
             grid = Table.grid(padding=2)
@@ -372,7 +189,7 @@ class FocusApp:
                     idx = vol_steps.index(current)
                     next_idx = (idx + 1) % len(vol_steps)
                 except ValueError:
-                    next_idx = 1 # Default to 5
+                    next_idx = 1
                 self.settings.set('volume_step', vol_steps[next_idx])
             elif choice == '8':
                 self.settings.set('auto_start', not self.settings.get('auto_start'))
@@ -413,7 +230,7 @@ class FocusApp:
                     self.console.print("[green]Stats reset![/green]")
                     time.sleep(1)
 
-    def phase_one_selection(self):
+    def phase_one_selection(self) -> Tuple[Optional[List[str]], Optional[int], List[str]]:
         # Check CLI args for headless start
         if self.cli_args and self.cli_args.quick:
             # Resolve sounds
@@ -446,7 +263,6 @@ class FocusApp:
 
             return selected_files, seconds, []
 
-
         while True:
             self.show_menu()
             
@@ -469,7 +285,7 @@ class FocusApp:
                     valid_selection = True
             
             if not valid_selection:
-                if not selection_str: # Allow simple enter to refresh or nothing
+                if not selection_str: 
                      self.console.print("[red]No valid sounds selected.[/red]")
                      time.sleep(1)
                      continue
@@ -482,14 +298,14 @@ class FocusApp:
         # Duration
         default_duration = self.settings.get("timer_duration")
         
-        # Auto-Start Logic: If auto_start is ON, use defaults immediately
+        # Auto-Start Logic
         if self.settings.get("auto_start"):
             self.console.print(f"\\n[italic {self.theme_color}]Auto-starting with default duration ({default_duration}m) and volume ({self.settings.get('volume')}%)[/italic {self.theme_color}]")
             time.sleep(1)
             seconds = int(default_duration * 60)
             vol_percent = float(self.settings.get("volume"))
             self.audio.set_master_volume(vol_percent / 100.0)
-            return selected_files, seconds, [] # Auto-start skips task entry for speed
+            return selected_files, seconds, [] 
 
         self.console.print(f"[bold yellow]Session Duration (minutes) [{default_duration}]:[/bold yellow] ", end="")
         try:
@@ -530,7 +346,7 @@ class FocusApp:
             
         return selected_files, seconds, tasks
 
-    def print_receipt(self, elapsed_seconds, tasks, files):
+    def print_receipt(self, elapsed_seconds: float, tasks: List[str], files: List[str]) -> None:
         self.console.print()
         
         # Data prep
@@ -539,7 +355,6 @@ class FocusApp:
         time_str = f"{mins:02}:{secs:02}"
         
         date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        import random
         txn_id = f"TXN-{random.randint(10000, 99999)}"
         
         # Stats for receipt
@@ -549,8 +364,8 @@ class FocusApp:
         
         # Receipt Construction
         width = 44
-        def c(text): return text.center(width)
-        def lr(left, right): 
+        def c(text: str) -> str: return text.center(width)
+        def lr(left: str, right: str) -> str: 
             padding = width - len(left) - len(right)
             return left + " " * padding + right
 
@@ -608,23 +423,19 @@ class FocusApp:
         self.console.print(Align.center(receipt_text))
         self.console.print()
 
-
-    def check_input(self):
+    def check_input(self) -> Optional[str]:
         if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
             return sys.stdin.read(1)
         return None
 
-    def run(self):
+    def run(self) -> None:
         # Scan assets before menu
         self.audio.scan_assets()
         
         files, duration, tasks = self.phase_one_selection()
-        # If files is None, we exit (user selected invalid or no sound in menu and we want to bail)
-        # But if files is empty [] and we are in quick mode, maybe we want silence?
-        # The logic in phase_one_selection returns None, None, [] if exit.
+        
         if files is None:
             return
-
 
         # Start Audio
         fade_ms = int(self.settings.get("fade_duration", 2.0) * 1000)
@@ -646,12 +457,10 @@ class FocusApp:
             playing_emojis.append(f"{emoji} {name}")
         
         base_footer = "Playing: " + " + ".join(playing_emojis)
-        def get_footer():
+        def get_footer() -> str:
             return f"{base_footer} | Volume: {int(self.audio.master_volume * 100)}%"
 
-
         # Progress bar configuration
-        # Check settings for timer visibility
         show_timer = self.settings.get("show_timer")
         
         columns = [
@@ -676,24 +485,18 @@ class FocusApp:
             Layout(name="lower", size=3)
         )
         
-        # Configure center layout based on tasks & Logs
-        # Standard: Center -> [Timer, Tasks?, Log]
-        
         center_elements = []
         center_elements.append(Layout(name="timer"))
         
         if tasks:
             center_elements.append(Layout(name="tasks", size=len(tasks) + 4))
             
-        # Add System Log panel if enabled
         if self.settings.get("show_system_log", True):
             center_elements.append(Layout(name="log", size=6))
         
         layout["center"].split_column(*center_elements)
         
         timer_layout = layout["center"]["timer"]
-        
-        # Safe retrieval of optional layouts
         log_layout = layout["center"].get("log") if self.settings.get("show_system_log", True) else None
         
         if tasks:
@@ -702,12 +505,11 @@ class FocusApp:
             tasks_layout = None
             
         # System Log State
-        log_messages = []
+        log_messages: List[str] = []
         last_log_time = time.time()
-        import random
         log_interval = random.uniform(2.0, 5.0)
         
-        def update_system_log():
+        def update_system_log() -> None:
             nonlocal log_messages, last_log_time, log_interval
             if time.time() - last_log_time > log_interval:
                 last_log_time = time.time()
@@ -733,8 +535,7 @@ class FocusApp:
                 log_messages.append(msg)
                 if len(log_messages) > 4:
                     log_messages.pop(0)
-                    
-        
+
         # Initial View
         old_settings = termios.tcgetattr(sys.stdin)
         try:
@@ -770,7 +571,6 @@ class FocusApp:
                     # Update Layout details
                     layout["upper"].update(Align.center(Text("FocusNoiseCLI", style=f"bold {self.theme_color}")))
                     
-                    # We render progress into a panel for the center
                     timer_layout.update(
                         Panel(progress, title="Time Remaining", border_style="green")
                     )
@@ -786,7 +586,6 @@ class FocusApp:
                             Panel(Align.center(task_table), title="Current Tasks", border_style="magenta")
                         )
                         
-                    # Update System Log Panel
                     if log_layout:
                         log_text = "\n".join(log_messages)
                         log_layout.update(
@@ -811,13 +610,12 @@ class FocusApp:
             # Play Gong
             if self.settings.get("play_gong", True):
                 self.audio.play_gong()
-                time.sleep(4.0) # Wait for gong to ring out
+                time.sleep(4.0)
             
             self.print_receipt(elapsed_total, tasks, files)
             self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
             
         except Exception:
-            # Capture any rendering or logic errors in the live loop
             self.console.print("\n[bold red]Dashboard Error:[/bold red]")
             self.console.print(traceback.format_exc())
             self.audio.stop_all(fade_ms=1000)
@@ -826,7 +624,14 @@ class FocusApp:
             if self.settings.get("confirm_exit", False):
                 self.console.print("\n[bold red]Exit requested. Confirm? (y/n): [/bold red]", end="")
                 try:
+                    # We need to temporarily restore termios to get proper input
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                     confirm = input().strip().lower()
+                    
+                    # If confirmed, we proceed to exit. If not, we resume?
+                    # Resuming is hard because we broke the loop and context.
+                    # Simplest is to just exit if 'y', else 'n' means... well code breaks out anyway.
+                    # The original code just printed "Resuming not supported yet".
                     if confirm != 'y':
                         self.console.print("[dim]Resuming not supported yet. Exiting...[/dim]")
                 except:
@@ -845,7 +650,6 @@ class FocusApp:
             time.sleep(self.settings.get("fade_duration", 2.0))
             self.console.print("\n[bold red]Session Stopped.[/bold red] 👋")
             try:
-                # Calculate elapsed if not yet done
                 if 'elapsed_total' not in locals():
                     elapsed_total = time.time() - start_time
                 self.print_receipt(elapsed_total, tasks, files)

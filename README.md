@@ -1,57 +1,105 @@
-# FocusNoiseCLI
+# FocusNoiseCLI 🎧
 
-FocusNoiseCLI is a terminal-based focus tool that plays ambient noises (brown noise, rain, cafe interaction) to help you get into the flow state. It features a rich TUI (Text User Interface) with progress tracking, gamification (ranks, streaks), and dynamic weather soundscapes.
+<p align="center">
+  <img src="assets/readme.gif" alt="FocusNoiseCLI Demo">
+</p>
 
-## Features
+**FocusNoiseCLI** is a minimalist, terminal-based focus companion designed for deep work. It blends immersive ambient soundscapes with a professional TUI (Text User Interface), helping you reach flow state while tracking your productivity through a gamified rank system.
 
-- **Ambient Audio**: Choose from Brown Noise, Rain, Cafe, and more.
-- **Dynamic Weather**: Audio textures change over time for an organic feel.
-- **Gamification**: Earn ranks like "Terminal Tourist" to "Time Lord" based on focus hours.
-- **Focus Timer**: Customizable Pomodoro-style timer with optional visual countdown.
-- **System Logs**: "Hacker-style" system messages and occasional "Ghost" easter eggs.
-- **Task Intent**: Optional task entry to keep your session purpose clear.
-- **Receipts**: Get a generated "receipt" summary at the end of every session.
+Built with **Python**, **Rich**, and **Pygame**, it offers a low-overhead, aesthetic alternative to browser-based noise generators.
 
-## Installation
+---
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/SyreeseOfficial/FocusNoiseCLI.git
-    cd FocusNoiseCLI
-    ```
+## ✨ Features
 
-2.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+- **🎛️ Layered Audio**: Mix and match multiple high-quality loops (Brown Noise, Rain, Cafe, etc.).
+- **🌦️ Dynamic Weather**: Intelligent texture engine that plays subtle SFX (distant thunder, bird chirps) over time for an organic experience.
+- **🏆 Gamification**: Progress through 8 ranks from "Noob" to "Time Lord" based on your total focus hours. Maintain daily streaks and earn titles.
+- **📋 Task Intent**: Optional task tracking displayed prominently on your dashboard.
+- **📟 System Dashboard**: A live, high-performance TUI with progress bars, visualizer-style logs, and session stats.
+- **🧾 Session Receipts**: Get an ASCII-styled "Focus Receipt" summarize your achievements after every session.
+- **⚙️ Deep Configuration**: Customize everything from fade durations and volume steps to "Ghost" easter egg frequency.
 
-    *Note: Requires `pygame` and `rich`.*
+---
 
-3.  (Optional) Setup Assets:
-    If you don't have custom assets, generate placeholders:
-    ```bash
-    python setup_assets.py
-    ```
+## 🚀 Installation
 
-## Usage
-
-Run the application:
+### Arch Linux (Recommended)
+FocusNoiseCLI is available on the **AUR**. Install it using your favorite AUR helper:
 
 ```bash
-python main.py
+yay -S focusnoisecli
 ```
 
+### Manual Installation (Cross-Platform)
+Requires Python 3.8+ and `portaudio` (for pygame).
+
+1. **Clone & Enter**:
+   ```bash
+   git clone https://github.com/SyreeseOfficial/FocusNoiseCLI.git
+   cd FocusNoiseCLI
+   ```
+
+2. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Generate Assets** (If starting without your own sounds):
+   ```bash
+   python setup_assets.py
+   ```
+
+4. **Launch**:
+   ```bash
+   python main.py
+   ```
+
+---
+
+## 🛠️ Usage
+
 ### Controls
+| Key | Action |
+|-----|--------|
+| `+` / `w` | Increase Volume |
+| `-` / `s` | Decrease Volume |
+| `Ctrl+C` | End Session & View Receipt |
 
-- **Sound Selection**: Enter the ID(s) of the sounds you want to layer (e.g., `1,3`).
-- **Settings**: Enter `s` in the main menu to configure volume, timer, colors, and more.
-- **Volume**: Use `+` / `-` keys during the session.
-- **Quit**: Press `Ctrl+C` to exit.
+### CLI Arguments
+FocusNoiseCLI supports headless starts for quick productivity:
+```bash
+# Start a 45-minute rain session at 50% volume immediately
+python main.py --quick --sound rain --time 45 --volume 50
+```
 
-## Configuration
+---
 
-Settings and stats are saved automatically to your user configuration directory (e.g., `~/.config/focus-cli` on Linux).
+## 📂 Configuration
 
-## License
+Settings and focus statistics are stored in OS-standard locations:
+- **Linux**: `~/.config/focus-cli/`
+- **macOS**: `~/Library/Application Support/focus-cli/`
+- **Windows**: `%LOCALAPPDATA%\focus-cli\`
 
-MIT
+---
+
+## 🗺️ Roadmap
+
+We are constantly evolving the "Zen Terminal" experience. Planned features include:
+
+- [ ] **Custom Themes**: JSON/CSS-like theme support for perfect terminal matching.
+- [ ] **Discord Rich Presence**: Share your focus status and rank with your community.
+- [ ] **Pomodoro Mode**: Integrated break timers and interval scheduling.
+- [ ] **Interactive Mixer**: Adjust individual sound volumes in real-time while focused.
+- [ ] **Session Analytics**: Local database for historical focus data and charts.
+- [ ] **Remote Control**: Mini-web server to control your terminal audio from a phone.
+
+---
+
+## ⚖️ License
+
+Project is licensed under the [MIT License](LICENSE).
+
+---
+<p align="center">Made with ❤️ for the Terminal Community</p>
