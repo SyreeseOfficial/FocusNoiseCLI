@@ -1,5 +1,7 @@
 import os
 import time
+import json
+import datetime
 import sys
 import termios
 import tty
@@ -17,11 +19,77 @@ from rich.layout import Layout
 from rich.align import Align
 from rich.text import Text
 
+class StatsManager:
+    def __init__(self, filename="stats.json"):
+        self.filename = filename
+        self.stats = self.load_stats()
+
+    def load_stats(self):
+        default = {
+            "total_seconds": 0.0,
+            "last_session_date": None,
+            "current_streak": 0
+        }
+        if not os.path.exists(self.filename):
+            return default
+        
+        try:
+            with open(self.filename, 'r') as f:
+                data = json.load(f)
+                return {**default, **data} # Merge with default to ensure keys exist
+        except:
+            return default
+
+    def save_stats(self):
+        with open(self.filename, 'w') as f:
+            json.dump(self.stats, f, indent=2)
+
+    def update_time(self, seconds):
+        if seconds <= 0:
+            return
+            
+        today = str(datetime.date.today())
+        last_date = self.stats["last_session_date"]
+        
+        # Streak Logic
+        if last_date != today:
+            if last_date:
+                # Check if consecutive day
+                last_dt = datetime.datetime.strptime(last_date, "%Y-%m-%d").date()
+                curr_dt = datetime.date.today()
+                delta = (curr_dt - last_dt).days
+                
+                if delta == 1:
+                    self.stats["current_streak"] += 1
+                elif delta > 1:
+                    self.stats["current_streak"] = 1
+                # If delta < 1 (same day), do nothing
+            else:
+                self.stats["current_streak"] = 1
+                
+            self.stats["last_session_date"] = today
+        
+        self.stats["total_seconds"] += seconds
+        self.save_stats()
+
+    def get_display_stats(self):
+        total_sec = int(self.stats["total_seconds"])
+        hours = total_sec // 3600
+        mins = (total_sec % 3600) // 60
+        time_str = f"{hours}h {mins}m"
+        
+        streak = self.stats["current_streak"]
+        streak_str = f"{streak} Day{'s' if streak != 1 else ''}"
+        
+        return time_str, streak_str
+
 class AudioManager:
     def __init__(self, assets_dir="assets"):
         pygame.mixer.init()
         self.assets_dir = assets_dir
+        self.sfx_dir = os.path.join(assets_dir, "sfx")
         self.sounds = {} # filename -> mixer.Sound
+        self.sfx = {} # filename -> mixer.Sound
         self.channels = {} # filename -> mixer.Channel
         self.playing = [] # List of filenames currently playing
         self.master_volume = 1.0
@@ -38,6 +106,7 @@ class AudioManager:
             'omm': '🧘'
         }
         self.scan_assets()
+        self.scan_sfx()
 
     def scan_assets(self):
         if not os.path.exists(self.assets_dir):
@@ -51,6 +120,26 @@ class AudioManager:
                     self.sounds[f] = pygame.mixer.Sound(path)
                 except Exception as e:
                     print(f"Error loading {f}: {e}")
+
+    def scan_sfx(self):
+        if not os.path.exists(self.sfx_dir):
+            return
+
+        valid_extensions = (".wav", ".mp3", ".ogg")
+        for f in os.listdir(self.sfx_dir):
+            if f.lower().endswith(valid_extensions):
+                path = os.path.join(self.sfx_dir, f)
+                try:
+                    self.sfx[f] = pygame.mixer.Sound(path)
+                except Exception as e:
+                    print(f"Error loading SFX {f}: {e}")
+
+    def play_gong(self):
+        # Specific helper for the gong
+        gong_file = "gong.mp3"
+        if gong_file in self.sfx:
+            self.sfx[gong_file].set_volume(self.master_volume)
+            self.sfx[gong_file].play()
 
     def get_emoji(self, filename):
         # ID generic names from filename
@@ -89,10 +178,17 @@ class FocusApp:
     def __init__(self):
         self.console = Console()
         self.audio = AudioManager()
+        self.stats = StatsManager()
         
     def show_menu(self):
         self.console.clear()
         self.console.print("[bold cyan]Focus Noise Player[/bold cyan] 🎧", justify="center")
+        self.console.print()
+        
+        # Stats Panel
+        time_str, streak_str = self.stats.get_display_stats()
+        stats_text = f"[bold green]Total Focus:[/bold green] {time_str}  |  [bold yellow]Current Streak:[/bold yellow] {streak_str} 🔥"
+        self.console.print(Panel(Align.center(stats_text), box=box.ROUNDED, style="blue"), justify="center")
         self.console.print()
 
         table = Table(title="Available Sounds", show_header=True, header_style="bold magenta", box=box.ROUNDED, padding=(0, 2))
@@ -242,16 +338,31 @@ class FocusApp:
                     
                     time.sleep(0.1) # Faster poll for input responsiveness
             
+            # Save stats
+            elapsed_total = time.time() - start_time
+            self.stats.update_time(elapsed_total)
+            
             self.console.print("[dim]Fading out...[/dim]")
             self.audio.stop_all(fade_ms=2000)
             time.sleep(2.0)
+            
+            # Play Gong
+            self.audio.play_gong()
+            time.sleep(4.0) # Wait for gong to ring out
+            
             self.console.print("[bold green]Session Complete![/bold green] 🎉")
+            self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
             
         except KeyboardInterrupt:
+            # Save stats on interrupt too
+            elapsed_total = time.time() - start_time
+            self.stats.update_time(elapsed_total)
+            
             self.console.print("\n[dim]Fading out...[/dim]")
             self.audio.stop_all(fade_ms=2000)
             time.sleep(2.0)
             self.console.print("\n[bold red]Session Stopped.[/bold red] 👋")
+            self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
