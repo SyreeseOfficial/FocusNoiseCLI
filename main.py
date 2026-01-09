@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.live import Live
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 from rich.panel import Panel
+from rich import box
 from rich.layout import Layout
 from rich.align import Align
 from rich.text import Text
@@ -83,9 +84,8 @@ class FocusApp:
         self.console.print("[bold cyan]Focus Noise Player[/bold cyan] 🎧", justify="center")
         self.console.print()
 
-        table = Table(title="Available Sounds", show_header=True, header_style="bold magenta")
+        table = Table(title="Available Sounds", show_header=True, header_style="bold magenta", box=box.ROUNDED, padding=(0, 2))
         table.add_column("ID", style="dim", width=4, justify="center")
-        table.add_column("Emoji", width=6, justify="center")
         table.add_column("Name", style="green")
 
         # Sort sounds for consistent ID
@@ -94,11 +94,10 @@ class FocusApp:
 
         for i, f in enumerate(sound_files):
             idx = str(i+1)
-            emoji = self.audio.get_emoji(f)
             # Generic clean name: remove extension, replace separators
             base = os.path.splitext(f)[0]
             headers = base.replace("_", " ").replace("-", " ").title()
-            table.add_row(idx, emoji, headers)
+            table.add_row(idx, headers)
 
         self.console.print(table, justify="center")
         self.console.print()
