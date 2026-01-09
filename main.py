@@ -9,6 +9,7 @@ import select
 # Suppress pygame welcome message
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
+import traceback
 from rich.console import Console
 from rich.table import Table
 from rich.live import Live
@@ -84,6 +85,14 @@ class StatsManager:
         
         return time_str, streak_str
 
+    def reset_stats(self):
+        self.stats = {
+            "total_seconds": 0.0,
+            "last_session_date": None,
+            "current_streak": 0
+        }
+        self.save_stats()
+
 class SettingsManager:
     def __init__(self, filename="settings.json"):
         self.filename = filename
@@ -93,7 +102,9 @@ class SettingsManager:
         default = {
             "volume": 100,
             "timer_duration": 25,
-            "show_timer": True
+            "show_timer": True,
+            "play_gong": True,
+            "dynamic_weather": True
         }
         if not os.path.exists(self.filename):
             return default
@@ -161,13 +172,17 @@ class FocusApp:
             table = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta")
             table.add_column("Option", style="yellow")
             table.add_column("Value", style="green")
+            table.add_column("Description", style="dim italic")
             
             # Helper to format boolean
             def fmt_bool(val): return "ON" if val else "OFF"
             
-            table.add_row("1. Default Volume", f"{self.settings.get('volume')}%")
-            table.add_row("2. Default Duration", f"{self.settings.get('timer_duration')} min")
-            table.add_row("3. Show Timer", fmt_bool(self.settings.get('show_timer')))
+            table.add_row("1. Default Volume", f"{self.settings.get('volume')}%", "Startup volume level")
+            table.add_row("2. Default Duration", f"{self.settings.get('timer_duration')} min", "Startup session length")
+            table.add_row("3. Show Timer", fmt_bool(self.settings.get('show_timer')), "Toggle countdown visibility")
+            table.add_row("4. Play Gong", fmt_bool(self.settings.get('play_gong')), "Sound at session end")
+            table.add_row("5. Dynamic Weather", fmt_bool(self.settings.get('dynamic_weather')), "Random background SFX")
+            table.add_row("6. Reset Stats", "[red]Action[/red]", "Clear all progress data")
             
             self.console.print(table, justify="center")
             self.console.print()
@@ -194,6 +209,18 @@ class FocusApp:
             elif choice == '3':
                 current = self.settings.get('show_timer')
                 self.settings.set('show_timer', not current)
+            elif choice == '4':
+                current = self.settings.get('play_gong', True)
+                self.settings.set('play_gong', not current)
+            elif choice == '5':
+                current = self.settings.get('dynamic_weather', True)
+                self.settings.set('dynamic_weather', not current)
+            elif choice == '6':
+                confirm = input("Are you sure you want to reset all stats? (y/n): ").lower()
+                if confirm == 'y':
+                    self.stats.reset_stats()
+                    self.console.print("[green]Stats reset![/green]")
+                    time.sleep(1)
 
     def phase_one_selection(self):
         while True:
@@ -312,8 +339,6 @@ class FocusApp:
         if show_timer:
             columns.append(TimeRemainingColumn())
             
-        columns.append(TextColumn("{task.fields[timer_str] if 'timer_str' in task.fields else ''}"))
-            
         progress = Progress(*columns, expand=True)
         
         task_id = progress.add_task("Focus Session", total=duration)
@@ -351,7 +376,8 @@ class FocusApp:
                         break
                     
                     # Periodic Dynamic Weather Update
-                    self.audio.update_textures()
+                    if self.settings.get("dynamic_weather", True):
+                        self.audio.update_textures()
                     
                     # Input Handling
                     key = self.check_input()
@@ -398,22 +424,35 @@ class FocusApp:
             time.sleep(2.0)
             
             # Play Gong
-            self.audio.play_gong()
-            time.sleep(4.0) # Wait for gong to ring out
+            if self.settings.get("play_gong", True):
+                self.audio.play_gong()
+                time.sleep(4.0) # Wait for gong to ring out
             
             self.console.print("[bold green]Session Complete![/bold green] 🎉")
             self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
             
+        except Exception:
+            # Capture any rendering or logic errors in the live loop
+            self.console.print("\n[bold red]Dashboard Error:[/bold red]")
+            self.console.print(traceback.format_exc())
+            self.audio.stop_all(fade_ms=1000)
         except KeyboardInterrupt:
             # Save stats on interrupt too
-            elapsed_total = time.time() - start_time
-            self.stats.update_time(elapsed_total)
+            try:
+                elapsed_total = time.time() - start_time
+                self.stats.update_time(elapsed_total)
+            except NameError:
+                # If start_time wasn't initialized
+                pass
             
             self.console.print("\n[dim]Fading out...[/dim]")
             self.audio.stop_all(fade_ms=2000)
             time.sleep(2.0)
             self.console.print("\n[bold red]Session Stopped.[/bold red] 👋")
-            self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
+            try:
+                self.console.print(f"[dim]Stats Saved: +{int(elapsed_total/60)}m focus time[/dim]")
+            except NameError:
+                pass
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
