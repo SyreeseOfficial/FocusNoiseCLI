@@ -18,6 +18,7 @@ from rich import box
 from rich.layout import Layout
 from rich.align import Align
 from rich.text import Text
+from audio_manager import AudioManager
 
 class StatsManager:
     def __init__(self, filename="stats.json"):
@@ -83,102 +84,43 @@ class StatsManager:
         
         return time_str, streak_str
 
-class AudioManager:
-    def __init__(self, assets_dir="assets"):
-        pygame.mixer.init()
-        self.assets_dir = assets_dir
-        self.sfx_dir = os.path.join(assets_dir, "sfx")
-        self.sounds = {} # filename -> mixer.Sound
-        self.sfx = {} # filename -> mixer.Sound
-        self.channels = {} # filename -> mixer.Channel
-        self.playing = [] # List of filenames currently playing
-        self.master_volume = 1.0
-        self.emojis = {
-            'rain': '🌧️',
-            'fire': '🔥',
-            'cafe': '☕',
-            'coffee': '☕',
-            'brown': '🤎',
-            'city': '🏙️',
-            'water': '💧',
-            'sea': '🌊',
-            'lofi': '🎧',
-            'omm': '🧘'
+class SettingsManager:
+    def __init__(self, filename="settings.json"):
+        self.filename = filename
+        self.settings = self.load_settings()
+
+    def load_settings(self):
+        default = {
+            "volume": 100,
+            "timer_duration": 25,
+            "show_timer": True
         }
-        self.scan_assets()
-        self.scan_sfx()
+        if not os.path.exists(self.filename):
+            return default
+        try:
+            with open(self.filename, 'r') as f:
+                data = json.load(f)
+                return {**default, **data}
+        except:
+            return default
 
-    def scan_assets(self):
-        if not os.path.exists(self.assets_dir):
-            return
-        
-        valid_extensions = (".wav", ".mp3", ".ogg")
-        for f in os.listdir(self.assets_dir):
-            if f.lower().endswith(valid_extensions):
-                path = os.path.join(self.assets_dir, f)
-                try:
-                    self.sounds[f] = pygame.mixer.Sound(path)
-                except Exception as e:
-                    print(f"Error loading {f}: {e}")
+    def save_settings(self):
+        with open(self.filename, 'w') as f:
+            json.dump(self.settings, f, indent=2)
 
-    def scan_sfx(self):
-        if not os.path.exists(self.sfx_dir):
-            return
+    def get(self, key):
+        return self.settings.get(key)
 
-        valid_extensions = (".wav", ".mp3", ".ogg")
-        for f in os.listdir(self.sfx_dir):
-            if f.lower().endswith(valid_extensions):
-                path = os.path.join(self.sfx_dir, f)
-                try:
-                    self.sfx[f] = pygame.mixer.Sound(path)
-                except Exception as e:
-                    print(f"Error loading SFX {f}: {e}")
-
-    def play_gong(self):
-        # Specific helper for the gong
-        gong_file = "gong.mp3"
-        if gong_file in self.sfx:
-            self.sfx[gong_file].set_volume(self.master_volume)
-            self.sfx[gong_file].play()
-
-    def get_emoji(self, filename):
-        # ID generic names from filename
-        lower_name = filename.lower()
-        for key, emoji in self.emojis.items():
-            if key in lower_name:
-                return emoji
-        return '🎵'
-
-    def play_sound(self, filename, fade_ms=2000):
-        if filename in self.sounds:
-            # Play in loop
-            channel = self.sounds[filename].play(loops=-1, fade_ms=fade_ms)
-            channel.set_volume(self.master_volume)
-            self.channels[filename] = channel
-            self.playing.append(filename)
-
-    def set_volume(self, filename, level):
-        # level 0.0 to 1.0
-        if filename in self.sounds:
-            self.sounds[filename].set_volume(level)
-
-    def set_master_volume(self, level):
-        self.master_volume = max(0.0, min(1.0, level))
-        for filename, channel in self.channels.items():
-            if channel.get_busy():
-                channel.set_volume(self.master_volume)
-
-    def stop_all(self, fade_ms=2000):
-        for filename in self.playing:
-            self.sounds[filename].fadeout(fade_ms)
-        self.playing.clear()
-        self.channels.clear()
+    def set(self, key, value):
+        self.settings[key] = value
+        self.save_settings()
 
 class FocusApp:
     def __init__(self):
         self.console = Console()
         self.audio = AudioManager()
         self.stats = StatsManager()
+        self.settings = SettingsManager()
         
     def show_menu(self):
         self.console.clear()
@@ -207,44 +149,112 @@ class FocusApp:
             table.add_row(idx, headers)
 
         self.console.print(table, justify="center")
+        self.console.print(Panel("[bold yellow]S[/bold yellow] - Settings", box=box.SIMPLE), justify="center")
         self.console.print()
 
-    def phase_one_selection(self):
-        self.show_menu()
-        
-        # Selection
-        self.console.print("[bold yellow]Select Sound IDs (comma separated):[/bold yellow] ", end="")
-        selection_str = input()
-        
-        # Parse selection
-        selected_ids = [s.strip() for s in selection_str.split(",")]
-        selected_files = []
-        for sid in selected_ids:
-            if sid in self.sound_map:
-                selected_files.append(self.sound_map[sid])
-        
-        if not selected_files:
-            self.console.print("[red]No valid sounds selected. Exiting.[/red]")
-            return None, None, []
+    def settings_menu(self):
+        while True:
+            self.console.clear()
+            self.console.print("[bold cyan]Settings[/bold cyan] ⚙️", justify="center")
+            self.console.print()
+            
+            table = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta")
+            table.add_column("Option", style="yellow")
+            table.add_column("Value", style="green")
+            
+            # Helper to format boolean
+            def fmt_bool(val): return "ON" if val else "OFF"
+            
+            table.add_row("1. Default Volume", f"{self.settings.get('volume')}%")
+            table.add_row("2. Default Duration", f"{self.settings.get('timer_duration')} min")
+            table.add_row("3. Show Timer", fmt_bool(self.settings.get('show_timer')))
+            
+            self.console.print(table, justify="center")
+            self.console.print()
+            self.console.print("[dim]Enter number to change, or 'b' to back[/dim]", justify="center")
+            
+            choice = input("\nSelect: ").strip().lower()
+            
+            if choice == 'b':
+                break
+            elif choice == '1':
+                try:
+                    val = int(input("Enter default volume (0-100): "))
+                    if 0 <= val <= 100:
+                        self.settings.set('volume', val)
+                except ValueError:
+                    pass
+            elif choice == '2':
+                try:
+                    val = int(input("Enter default duration (min): "))
+                    if val > 0:
+                        self.settings.set('timer_duration', val)
+                except ValueError:
+                    pass
+            elif choice == '3':
+                current = self.settings.get('show_timer')
+                self.settings.set('show_timer', not current)
 
+    def phase_one_selection(self):
+        while True:
+            self.show_menu()
+            
+            # Selection
+            self.console.print("[bold yellow]Select Sound IDs (comma separated) or 'S' for Settings:[/bold yellow] ", end="")
+            selection_str = input().strip()
+            
+            if selection_str.lower() == 's':
+                self.settings_menu()
+                continue
+            
+            # Parse selection
+            selected_ids = [s.strip() for s in selection_str.split(",")]
+            selected_files = []
+            valid_selection = False
+            
+            for sid in selected_ids:
+                if sid in self.sound_map:
+                    selected_files.append(self.sound_map[sid])
+                    valid_selection = True
+            
+            if not valid_selection:
+                if not selection_str: # Allow simple enter to refresh or nothing
+                     self.console.print("[red]No valid sounds selected.[/red]")
+                     time.sleep(1)
+                     continue
+                
+                self.console.print("[red]No valid sounds selected. Exiting.[/red]")
+                return None, None, []
+                
+            break
+        
         # Duration
-        self.console.print("[bold yellow]Session Duration (minutes):[/bold yellow] ", end="")
+        default_duration = self.settings.get("timer_duration")
+        self.console.print(f"[bold yellow]Session Duration (minutes) [{default_duration}]:[/bold yellow] ", end="")
         try:
-            minutes = float(input())
+            dur_input = input().strip()
+            if not dur_input:
+                minutes = float(default_duration)
+            else:
+                minutes = float(dur_input)
             seconds = int(minutes * 60)
         except ValueError:
-            self.console.print("[red]Invalid duration. Defaulting to 25 minutes.[/red]")
-            seconds = 25 * 60
+            self.console.print(f"[red]Invalid duration. Defaulting to {default_duration} minutes.[/red]")
+            seconds = int(default_duration * 60)
             
         # Initial Volume
-        self.console.print("[bold yellow]Initial Volume (0-100%):[/bold yellow] ", end="")
+        default_vol = self.settings.get("volume")
+        self.console.print(f"[bold yellow]Initial Volume (0-100%) [{default_vol}]:[/bold yellow] ", end="")
         try:
-            vol_input = input()
-            if vol_input.strip():
+            vol_input = input().strip()
+            if not vol_input:
+                vol_percent = float(default_vol)
+            else:
                 vol_percent = float(vol_input)
-                self.audio.set_master_volume(vol_percent / 100.0)
+            self.audio.set_master_volume(vol_percent / 100.0)
         except ValueError:
-            self.console.print("[red]Invalid volume. Defaulting to 100%.[/red]")
+            self.console.print(f"[red]Invalid volume. Using default {default_vol}%.[/red]")
+            self.audio.set_master_volume(default_vol / 100.0)
 
         # Task Intents
         tasks = []
@@ -285,20 +295,26 @@ class FocusApp:
             emoji = self.audio.get_emoji(f)
             playing_emojis.append(f"{emoji} {name}")
         
-            playing_emojis.append(f"{emoji} {name}")
-        
         base_footer = "Playing: " + " + ".join(playing_emojis)
         def get_footer():
             return f"{base_footer} | Volume: {int(self.audio.master_volume * 100)}%"
 
         # Progress bar configuration
-        progress = Progress(
+        # Check settings for timer visibility
+        show_timer = self.settings.get("show_timer")
+        
+        columns = [
             TextColumn("[bold blue]{task.description}"),
             BarColumn(bar_width=None),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            expand=True
-        )
+        ]
+        
+        if show_timer:
+            columns.append(TimeRemainingColumn())
+            
+        columns.append(TextColumn("{task.fields[timer_str] if 'timer_str' in task.fields else ''}"))
+            
+        progress = Progress(*columns, expand=True)
         
         task_id = progress.add_task("Focus Session", total=duration)
         
@@ -333,6 +349,9 @@ class FocusApp:
                     
                     if remaining <= 0:
                         break
+                    
+                    # Periodic Dynamic Weather Update
+                    self.audio.update_textures()
                     
                     # Input Handling
                     key = self.check_input()
