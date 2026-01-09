@@ -7,3 +7,9 @@ assets/textures/
 assets/sfx/
 *.mp3
 *.wav
+
+# AUR Build Artifacts
+aur/src/
+aur/pkg/
+aur/FocusNoiseCLI/
+*.pkg.tar.zst
