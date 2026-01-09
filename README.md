@@ -28,7 +28,7 @@ Built with **Python**, **Rich**, and **Pygame**, it offers a low-overhead, aesth
 FocusNoiseCLI is available on the **AUR**. Install it using your favorite AUR helper:
 
 ```bash
-yay -S focusnoisecli
+yay -S focusnoise-cli-git
 ```
 
 ### Manual Installation (Cross-Platform)
